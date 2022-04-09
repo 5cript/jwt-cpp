@@ -577,7 +577,7 @@ namespace jwt {
 
 			std::shared_ptr<EVP_PKEY> pkey(
 				PEM_read_bio_PUBKEY(pubkey_bio.get(), nullptr, nullptr,
-									(void*)password.data()), // NOLINT(google-readability-casting) requires `const_cast`
+									reinterpret_cast<void*>(const_cast<char*>(password.data()))), // NOLINT(google-readability-casting) requires `const_cast`
 				EVP_PKEY_free);
 			if (!pkey) {
 				ec = error::rsa_error::load_key_bio_read;
@@ -682,7 +682,7 @@ namespace jwt {
 
 			std::shared_ptr<EVP_PKEY> pkey(
 				PEM_read_bio_PUBKEY(pubkey_bio.get(), nullptr, nullptr,
-									(void*)password.data()), // NOLINT(google-readability-casting) requires `const_cast`
+									reinterpret_cast<void*>(const_cast<char*>(password.data()))), // NOLINT(google-readability-casting) requires `const_cast`
 				EVP_PKEY_free);
 			if (!pkey) {
 				ec = error::ecdsa_error::load_key_bio_read;
@@ -766,8 +766,8 @@ namespace jwt {
 			bn2raw(const BIGNUM* bn)
 #endif
 		{
-			std::string res(BN_num_bytes(bn), '\0');
-			BN_bn2bin(bn, (unsigned char*)res.data()); // NOLINT(google-readability-casting) requires `const_cast`
+			std::string res(static_cast<std::string::size_type>(BN_num_bytes(bn)), '\0');
+			BN_bn2bin(bn, reinterpret_cast<unsigned char*>(res.data())); // NOLINT(google-readability-casting) requires `const_cast`
 			return res;
 		}
 		/**
@@ -842,8 +842,8 @@ namespace jwt {
 				std::string res(static_cast<size_t>(EVP_MAX_MD_SIZE), '\0');
 				auto len = static_cast<unsigned int>(res.size());
 				if (HMAC(md(), secret.data(), static_cast<int>(secret.size()),
-						 reinterpret_cast<const unsigned char*>(data.data()), static_cast<int>(data.size()),
-						 (unsigned char*)res.data(), // NOLINT(google-readability-casting) requires `const_cast`
+						 reinterpret_cast<const unsigned char*>(data.data()), static_cast<size_t>(data.size()),
+						 reinterpret_cast<unsigned char*>(res.data()), // NOLINT(google-readability-casting) requires `const_cast`
 						 &len) == nullptr) {
 					ec = error::signature_generation_error::hmac_failed;
 					return {};
@@ -930,14 +930,14 @@ namespace jwt {
 					return {};
 				}
 
-				std::string res(EVP_PKEY_size(pkey.get()), '\0');
+				std::string res(static_cast<std::string::size_type>(EVP_PKEY_size(pkey.get())), '\0');
 				unsigned int len = 0;
 
 				if (!EVP_SignUpdate(ctx.get(), data.data(), data.size())) {
 					ec = error::signature_generation_error::signupdate_failed;
 					return {};
 				}
-				if (EVP_SignFinal(ctx.get(), (unsigned char*)res.data(), &len, pkey.get()) == 0) {
+				if (EVP_SignFinal(ctx.get(), reinterpret_cast<unsigned char*>(res.data()), &len, pkey.get()) == 0) {
 					ec = error::signature_generation_error::signfinal_failed;
 					return {};
 				}
@@ -1020,7 +1020,7 @@ namespace jwt {
 				}
 				if (!pkey) throw ecdsa_exception(error::ecdsa_error::invalid_key);
 
-				size_t keysize = EVP_PKEY_bits(pkey.get());
+				size_t keysize = static_cast<size_t>(EVP_PKEY_bits(pkey.get()));
 				if (keysize != signature_length * 4 && (signature_length != 132 || keysize != 521))
 					throw ecdsa_exception(error::ecdsa_error::invalid_key_size);
 			}
@@ -1057,7 +1057,7 @@ namespace jwt {
 					return {};
 				}
 				std::string res(len, '\0');
-				if (!EVP_DigestSignFinal(ctx.get(), (unsigned char*)res.data(), &len)) {
+				if (!EVP_DigestSignFinal(ctx.get(), reinterpret_cast<unsigned char*>(res.data()), &len)) {
 					ec = error::signature_generation_error::signfinal_failed;
 					return {};
 				}
@@ -1147,7 +1147,7 @@ namespace jwt {
 			std::string der_to_p1363_signature(const std::string& der_signature, std::error_code& ec) const {
 				const unsigned char* possl_signature = reinterpret_cast<const unsigned char*>(der_signature.data());
 				std::unique_ptr<ECDSA_SIG, decltype(&ECDSA_SIG_free)> sig(
-					d2i_ECDSA_SIG(nullptr, &possl_signature, der_signature.length()), ECDSA_SIG_free);
+					d2i_ECDSA_SIG(nullptr, &possl_signature, static_cast<long int>(der_signature.length())), ECDSA_SIG_free);
 				if (!sig) {
 					ec = error::signature_generation_error::signature_decoding_failed;
 					return {};
@@ -1197,14 +1197,14 @@ namespace jwt {
 					ec = error::signature_verification_error::signature_encoding_failed;
 					return {};
 				}
-				std::string der_signature(length, '\0');
-				unsigned char* psbuffer = (unsigned char*)der_signature.data();
+				std::string der_signature(static_cast<std::string::size_type>(length), '\0');
+				unsigned char* psbuffer = reinterpret_cast<unsigned char*>(der_signature.data());
 				length = i2d_ECDSA_SIG(psig, &psbuffer);
 				if (length < 0) {
 					ec = error::signature_verification_error::signature_encoding_failed;
 					return {};
 				}
-				der_signature.resize(length);
+				der_signature.resize(static_cast<std::string::size_type>(length));
 				return der_signature;
 			}
 
@@ -1271,7 +1271,7 @@ namespace jwt {
 					return {};
 				}
 
-				size_t len = EVP_PKEY_size(pkey.get());
+				size_t len = static_cast<size_t>(EVP_PKEY_size(pkey.get()));
 				std::string res(len, '\0');
 
 // LibreSSL is the special kid in the block, as it does not support EVP_DigestSign.
@@ -1424,11 +1424,11 @@ namespace jwt {
 					return {};
 				}
 
-				size_t size = EVP_PKEY_size(pkey.get());
+				size_t size = static_cast<size_t>(EVP_PKEY_size(pkey.get()));
 				std::string res(size, 0x00);
 				if (EVP_DigestSignFinal(
 						md_ctx.get(),
-						(unsigned char*)res.data(), // NOLINT(google-readability-casting) requires `const_cast`
+						reinterpret_cast<unsigned char*>(res.data()), // NOLINT(google-readability-casting) requires `const_cast`
 						&size) <= 0) {
 					ec = error::signature_generation_error::signfinal_failed;
 					return {};
@@ -1478,7 +1478,7 @@ namespace jwt {
 					return;
 				}
 
-				if (EVP_DigestVerifyFinal(md_ctx.get(), (unsigned char*)signature.data(), signature.size()) <= 0) {
+				if (EVP_DigestVerifyFinal(md_ctx.get(), reinterpret_cast<unsigned char*>(const_cast<char*>(signature.data())), signature.size()) <= 0) {
 					ec = error::signature_verification_error::verifyfinal_failed;
 					return;
 				}
